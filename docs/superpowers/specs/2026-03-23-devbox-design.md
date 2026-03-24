@@ -185,6 +185,7 @@ PRAGMA user_version = 1;
 CREATE TABLE users (
     id          TEXT PRIMARY KEY,  -- uuid v4, prefixed: usr_
     name        TEXT NOT NULL,
+    is_admin    INTEGER NOT NULL DEFAULT 0,  -- first registered user = 1
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
