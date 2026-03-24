@@ -43,8 +43,42 @@ Two components communicating over HTTPS:
 
 - Single Go static binary, cross-compiled for darwin/linux, amd64/arm64.
 - Auto-detects project from git remote origin; `--project` flag overrides.
-- Writes `.env.local` with `0600` permissions at the git repo root.
+- Auto-detects env file name from project type; `--env-file` flag overrides.
+- Writes env file with `0600` permissions at the git repo root.
 - Never silently overwrites — requires `--force` or interactive confirmation.
+
+### Env File Detection
+
+The CLI detects the correct env filename by checking for project markers at the repo root:
+
+| Marker file(s) | Detected type | Env filename |
+|---|---|---|
+| `package.json` or `tsconfig.json` | Node.js / TypeScript | `.env.local` |
+| `next.config.*` or `nuxt.config.*` | Next.js / Nuxt | `.env.local` |
+| `pyproject.toml` or `requirements.txt` or `Pipfile` | Python | `.env` |
+| `go.mod` | Go | `.env` |
+| `Cargo.toml` | Rust | `.env` |
+| `Gemfile` | Ruby | `.env` |
+| `composer.json` | PHP | `.env` |
+| (none matched) | Unknown | `.env` |
+
+Detection runs on every `push` and `pull`. The detected filename is shown in output:
+
+```
+$ dbx pull
+Pulling "coined" (github.com/user/coined) from my-server.example.com
+Detected Node.js project → writing .env.local
+Wrote .env.local (14 variables, 1.2 KB)
+```
+
+**Override:** `--env-file <name>` on any command:
+
+```
+dbx pull --env-file .env          # force .env even in a Node project
+dbx push --env-file .env.local    # force .env.local even in a Python project
+```
+
+The env filename is stored server-side on the project record so that cloud environments (which may not have project markers yet at pull time) know which file to write. Updated on each push.
 
 ### Project Identification
 
@@ -202,6 +236,7 @@ CREATE TABLE projects (
     id          TEXT PRIMARY KEY,  -- uuid v4, prefixed: proj_
     name        TEXT NOT NULL,      -- human-readable name
     remote_url  TEXT UNIQUE,        -- normalized git remote, nullable for manually named projects
+    env_file    TEXT NOT NULL DEFAULT '.env',  -- detected or overridden env filename
     owner_id    TEXT NOT NULL REFERENCES users(id),
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -424,9 +459,9 @@ Error: No authentication method found.
 **CI detection:** When `CI=true`, suppress prompts/spinners/color. `dbx pull` behaves as if `--force` is passed (overwrites without prompting). Exit with meaningful codes (0=success, 1=error, 2=auth error, 3=not found).
 
 **File safety:**
-- Write `.env.local` with `0600` permissions.
-- On `dbx init` or first `dbx pull`, check `.gitignore` includes `.env.local`. Warn if not.
-- Detect and warn if `.env.local` is a symlink.
+- Write env file with `0600` permissions.
+- On `dbx init` or first `dbx pull`, check `.gitignore` includes the env file (`.env.local`, `.env`, etc.). Warn if not.
+- Detect and warn if the env file is a symlink.
 - Validate content is UTF-8 text on push. Reject binary.
 - Reject blobs over 64 KB on push (env files should not be this large).
 
