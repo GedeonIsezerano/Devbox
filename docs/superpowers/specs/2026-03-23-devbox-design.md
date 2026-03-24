@@ -1,6 +1,8 @@
 # Devbox Design Spec
 
+**Project name**: Devbox
 **CLI binary**: `dbx`
+**Server binary**: `dbx-server`
 **Language**: Go
 **Date**: 2026-03-23
 
@@ -56,7 +58,7 @@ https://github.com/user/coined   →  github.com/user/coined
 - `dbx pull` reads `origin` remote, normalizes, and looks up on server.
 - `dbx pull --project coined` overrides with an explicit name.
 - `dbx init` registers the current repo's remote as a project on the server.
-- No config files committed to the repo. No `.dbx/` directory.
+- No config files committed to the repo. A `.dbx/cache/` directory may exist locally (gitignored) for caching and local state; see Section 7.
 
 ## 3. Authentication
 
@@ -91,7 +93,10 @@ Client                                 Server
 - Nonces expire in 60 seconds.
 - Signed payload uses SSH signature namespace `devbox-auth@v1` for domain separation, preventing cross-protocol replay.
 - Rate-limited: 10 requests/min per IP on `/auth/challenge` and `/auth/verify`.
-- Session tokens stored server-side (not stateless JWTs) — revocable via `/auth/logout`.
+- Session tokens stored server-side in `sessions` table (not stateless JWTs) — revocable via `/auth/logout`.
+- Nonces stored in-memory (lost on server restart, which is acceptable — client retries the challenge).
+
+**SSH key discovery order:** `ssh-agent` first, then `~/.ssh/id_ed25519`, `id_ed25519_sk`, `id_ecdsa`, `id_rsa`. Does not consult `~/.ssh/config`.
 
 ### Personal Access Tokens (cloud environments)
 
@@ -139,18 +144,20 @@ Server-side encryption. The server operator is trusted. This is documented as an
 - Version number included in authenticated encryption data to prevent rollback attacks.
 - Encryption/decryption is behind a Go interface to enable future client-side encryption without architectural changes.
 
-### Key Rotation
+### Key Rotation (v2)
 
-`dbx-server rotate-key` command:
+Schema and encryption interface designed in v1 to support rotation. The `dbx-server rotate-key` command is implemented in v2:
 1. Generates new age identity.
 2. Re-encrypts all blobs in a transaction (decrypt with old, encrypt with new).
 3. Logs rotation event to audit log.
 
 ### Memory Protection
 
-- `mlock` on key material to prevent swapping to disk.
+Best-effort. Platform-specific limitations are documented.
+
+- `mlock` on key material to prevent swapping to disk (requires `RLIMIT_MEMLOCK` on Linux).
 - Disable core dumps (`RLIMIT_CORE=0`).
-- Zero buffers after use.
+- Use `memguard` or similar library for sensitive buffers (Go's GC may copy key material).
 
 ## 5. Database
 
@@ -239,6 +246,16 @@ CREATE TABLE tokens (
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE TABLE sessions (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id),
+    token_hash  TEXT NOT NULL UNIQUE,  -- SHA-256(session_token)
+    expires_at  TEXT NOT NULL,
+    ip_address  TEXT,
+    user_agent  TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 CREATE TABLE audit_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -248,7 +265,11 @@ CREATE TABLE audit_log (
     action      TEXT NOT NULL,  -- auth.success, auth.failure, env.pull, env.push, env.force_push,
                                 -- token.create, token.revoke, token.use, project.create, project.delete,
                                 -- user.create, key.rotate
-    metadata    TEXT,            -- JSON blob for action-specific data
+    metadata    TEXT,            -- JSON blob for action-specific data:
+                                -- env.pull: {"version": N}
+                                -- env.push: {"old_version": N, "new_version": N}
+                                -- token.create: {"token_name": "...", "scope": "...", "ttl": "..."}
+                                -- auth.failure: {"reason": "...", "fingerprint": "..."}
     ip_address  TEXT,
     user_agent  TEXT
 );
@@ -278,6 +299,7 @@ CREATE TABLE audit_log (
 | POST | `/auth/challenge` | Request nonce for SSH auth | No (rate-limited) |
 | POST | `/auth/verify` | Submit SSH signature, get session token | No (rate-limited) |
 | POST | `/auth/token` | Authenticate with PAT/provision token | No |
+| POST | `/auth/register` | Register user + SSH public key | No (rate-limited) |
 | POST | `/auth/logout` | Invalidate session token | Yes |
 
 **Projects:**
@@ -306,12 +328,25 @@ CREATE TABLE audit_log (
 |--------|------|-------------|
 | GET | `/health` | Health check |
 
+### User Onboarding
+
+- v1 uses open registration: `POST /auth/register` creates a user and associates the SSH public key. The first registered user becomes the server admin.
+- `dbx auth login --server <url>` calls `/auth/register` if the key is unknown, or `/auth/challenge` + `/auth/verify` if already registered.
+- The `--project` flag on CLI commands matches the `name` column in the `projects` table (case-sensitive, exact match).
+
 ### Authorization
 
-- Every project-scoped endpoint verifies the authenticated user/token has access to that specific project via `project_members`.
+- v1 is single-user but implements authorization checks. Project creator is auto-added to `project_members` with `admin` role. All project-scoped endpoints verify membership. This ensures the authz middleware exists and is tested before multi-user is added in v2.
 - Unauthorized project access returns 404 (not 403) to avoid confirming project existence.
 - Project IDs are UUIDs (not sequential integers) as defense-in-depth.
 - Optimistic locking on env push: client sends expected version, server rejects with 409 Conflict on mismatch.
+
+### Rate Limiting
+
+- In-memory rate limiter (acceptable for single-instance server; lost on restart).
+- `/auth/challenge`, `/auth/verify`, `/auth/register`: 10 requests/min per IP.
+- All other endpoints: 60 requests/min per IP.
+- Returns HTTP 429 with `Retry-After` header when exceeded.
 
 ### Request Limits
 
@@ -385,7 +420,7 @@ Error: No authentication method found.
     $ dbx auth login --server https://my-server.example.com
 ```
 
-**CI detection:** When `CI=true`, suppress prompts/spinners/color, default `--force` on pull, exit with meaningful codes (0=success, 1=error, 2=auth error, 3=not found).
+**CI detection:** When `CI=true`, suppress prompts/spinners/color. `dbx pull` behaves as if `--force` is passed (overwrites without prompting). Exit with meaningful codes (0=success, 1=error, 2=auth error, 3=not found).
 
 **File safety:**
 - Write `.env.local` with `0600` permissions.
@@ -409,6 +444,7 @@ Error: No authentication method found.
 ```toml
 server = "https://my-server.example.com"
 ssh_key = "~/.ssh/id_ed25519"  # optional, auto-detected
+tls_ca = "/path/to/ca.pem"    # optional, for self-signed certs
 ```
 
 `.dbx/cache/` (gitignored, at repo root):
@@ -436,7 +472,7 @@ dbx-server \
 **Server subcommands:**
 - `dbx-server serve` — run the server (default).
 - `dbx-server backup --output <path>` — consistent SQLite backup.
-- `dbx-server rotate-key` — rotate master encryption key.
+- `dbx-server rotate-key` — rotate master encryption key (v2, subcommand reserved).
 - `dbx-server emergency-revoke-all` — invalidate all sessions and tokens.
 
 ### Deployment Options
@@ -485,8 +521,9 @@ dbx-linux-arm64     (Linux ARM)
 
 ### v1 (MVP)
 
-- Single-user (no team sharing, but schema supports it).
+- Single-user (no team sharing, but schema and authz middleware support it).
 - Single environment per project (`default`), but `environment` column exists in schema.
+- `env_var_history` retains last 10 versions per project. Older versions are pruned on push. Rollback commands are v2, but the data is preserved.
 - SSH key auth + PAT auth + provision tokens.
 - `dbx init`, `push`, `pull`, `diff`, `auth login/status/logout`, `token create/list/revoke`, `whoami`.
 - Server with SQLite, age encryption, HKDF per-project keys.
