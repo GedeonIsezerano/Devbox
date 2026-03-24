@@ -1,0 +1,59 @@
+version: 2
+
+builds:
+  - id: dbx
+    main: ./cmd/dbx
+    binary: dbx
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+  - id: dbx-server
+    main: ./cmd/dbx-server
+    binary: dbx-server
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: dbx
+    builds:
+      - dbx
+    name_template: "dbx_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+
+  - id: dbx-server
+    builds:
+      - dbx-server
+    name_template: "dbx-server_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: user
+    name: devbox
