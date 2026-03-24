@@ -183,6 +183,16 @@ func RevokeToken(db *sql.DB, tokenID string) error {
 	return nil
 }
 
+// DeleteAllTokens removes all tokens (for emergency-revoke-all) and returns
+// the count of tokens deleted.
+func DeleteAllTokens(db *sql.DB) (int64, error) {
+	result, err := db.Exec("DELETE FROM tokens")
+	if err != nil {
+		return 0, fmt.Errorf("delete all tokens: %w", err)
+	}
+	return result.RowsAffected()
+}
+
 // UpdateLastUsed sets the last_used timestamp to the current time.
 func UpdateLastUsed(db *sql.DB, tokenID string) error {
 	_, err := db.Exec(
