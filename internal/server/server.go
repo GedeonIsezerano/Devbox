@@ -55,10 +55,17 @@ func NewServer(cfg Config) *Server {
 		r.With(RequireAuth(cfg.DB)).Post("/logout", srv.handleLogout)
 	})
 
-	// Project routes — registered in later tasks.
+	// Project and env routes.
 	r.Route("/projects", func(r chi.Router) {
 		r.Use(RequireAuth(cfg.DB))
-		// Handlers will be added by Task 10.
+		r.Post("/", srv.handleCreateProject)
+		r.Get("/", srv.handleListProjects)
+		r.Route("/{projectID}", func(r chi.Router) {
+			r.Delete("/", srv.handleDeleteProject)
+			r.Get("/env", srv.handlePullEnv)
+			r.Get("/env/version", srv.handleGetEnvVersion)
+			r.Put("/env", srv.handlePushEnv)
+		})
 	})
 
 	// Token routes — registered in later tasks.

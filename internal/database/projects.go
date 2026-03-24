@@ -67,6 +67,24 @@ func CreateProject(db *sql.DB, name, remoteURL, envFile, ownerID string) (Projec
 	return proj, nil
 }
 
+// FindProjectByID looks up a project by its primary key.
+// Returns sql.ErrNoRows (wrapped) if no match is found.
+func FindProjectByID(db *sql.DB, id string) (Project, error) {
+	var proj Project
+	var rawRemoteURL sql.NullString
+	err := db.QueryRow(
+		"SELECT id, name, remote_url, env_file, owner_id, created_at FROM projects WHERE id = ?",
+		id,
+	).Scan(&proj.ID, &proj.Name, &rawRemoteURL, &proj.EnvFile, &proj.OwnerID, &proj.CreatedAt)
+	if err != nil {
+		return Project{}, fmt.Errorf("find project by id: %w", err)
+	}
+	if rawRemoteURL.Valid {
+		proj.RemoteURL = rawRemoteURL.String
+	}
+	return proj, nil
+}
+
 // FindProjectByRemoteURL looks up a project by its remote_url column.
 // Returns sql.ErrNoRows (wrapped) if no match is found.
 func FindProjectByRemoteURL(db *sql.DB, remoteURL string) (Project, error) {
