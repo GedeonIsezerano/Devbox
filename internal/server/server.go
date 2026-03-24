@@ -68,10 +68,12 @@ func NewServer(cfg Config) *Server {
 		})
 	})
 
-	// Token routes — registered in later tasks.
+	// Token routes.
 	r.Route("/tokens", func(r chi.Router) {
 		r.Use(RequireAuth(cfg.DB))
-		// Handlers will be added by Task 11.
+		r.Post("/", srv.handleCreateToken)
+		r.Get("/", srv.handleListTokens)
+		r.Delete("/{tokenID}", srv.handleRevokeToken)
 	})
 
 	return srv
