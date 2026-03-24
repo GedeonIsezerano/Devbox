@@ -85,3 +85,17 @@ func FindUserByFingerprint(db *sql.DB, fingerprint string) (User, error) {
 	}
 	return user, nil
 }
+
+// FindPublicKeyByFingerprint returns the stored public key string for an SSH
+// key identified by its fingerprint. Returns an error wrapping sql.ErrNoRows
+// if no key is found.
+func FindPublicKeyByFingerprint(db *sql.DB, fingerprint string) (string, error) {
+	var pubKey string
+	err := db.QueryRow(
+		"SELECT public_key FROM ssh_keys WHERE fingerprint = ?", fingerprint,
+	).Scan(&pubKey)
+	if err != nil {
+		return "", fmt.Errorf("find public key by fingerprint: %w", err)
+	}
+	return pubKey, nil
+}

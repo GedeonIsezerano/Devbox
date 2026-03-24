@@ -18,6 +18,7 @@ import (
 type contextKey string
 
 const userIDKey contextKey = "userID"
+const sessionIDKey contextKey = "sessionID"
 
 // SetUserID stores a user ID in the context.
 func SetUserID(ctx context.Context, userID string) context.Context {
@@ -28,6 +29,18 @@ func SetUserID(ctx context.Context, userID string) context.Context {
 // if no user ID is present.
 func GetUserID(ctx context.Context) string {
 	v, _ := ctx.Value(userIDKey).(string)
+	return v
+}
+
+// SetSessionID stores a session ID in the context.
+func SetSessionID(ctx context.Context, sessionID string) context.Context {
+	return context.WithValue(ctx, sessionIDKey, sessionID)
+}
+
+// GetSessionID retrieves the session ID from the context. Returns an empty
+// string if no session ID is present.
+func GetSessionID(ctx context.Context) string {
+	v, _ := ctx.Value(sessionIDKey).(string)
 	return v
 }
 
@@ -125,6 +138,7 @@ func RequireAuth(db *sql.DB) func(http.Handler) http.Handler {
 			}
 
 			ctx := SetUserID(r.Context(), sess.UserID)
+			ctx = SetSessionID(ctx, sess.ID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

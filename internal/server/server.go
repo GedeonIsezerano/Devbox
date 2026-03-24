@@ -28,6 +28,16 @@ type Config struct {
 func NewServer(cfg Config) *Server {
 	r := chi.NewRouter()
 
+	srv := &Server{
+		Server: &http.Server{
+			Addr:    cfg.ListenAddr,
+			Handler: r,
+		},
+		DB:        cfg.DB,
+		Encryptor: cfg.Encryptor,
+		Nonces:    cfg.Nonces,
+	}
+
 	// Global middleware.
 	r.Use(RateLimiter(60))
 	r.Use(MaxBodySize(1 << 20)) // 1MB
@@ -35,9 +45,14 @@ func NewServer(cfg Config) *Server {
 	// Health endpoint — no auth required.
 	r.Get("/health", handleHealth)
 
-	// Auth routes — registered in later tasks.
+	// Auth routes.
 	r.Route("/auth", func(r chi.Router) {
-		// Handlers will be added by Task 9.
+		r.Use(RateLimiter(10)) // 10/min for auth endpoints
+		r.Post("/register", srv.handleRegister)
+		r.Post("/challenge", srv.handleChallenge)
+		r.Post("/verify", srv.handleVerify)
+		r.Post("/token", srv.handleTokenAuth)
+		r.With(RequireAuth(cfg.DB)).Post("/logout", srv.handleLogout)
 	})
 
 	// Project routes — registered in later tasks.
@@ -51,16 +66,6 @@ func NewServer(cfg Config) *Server {
 		r.Use(RequireAuth(cfg.DB))
 		// Handlers will be added by Task 11.
 	})
-
-	srv := &Server{
-		Server: &http.Server{
-			Addr:    cfg.ListenAddr,
-			Handler: r,
-		},
-		DB:        cfg.DB,
-		Encryptor: cfg.Encryptor,
-		Nonces:    cfg.Nonces,
-	}
 
 	return srv
 }
