@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/user/devbox/internal/crypto"
@@ -30,8 +31,12 @@ func NewServer(cfg Config) *Server {
 
 	srv := &Server{
 		Server: &http.Server{
-			Addr:    cfg.ListenAddr,
-			Handler: r,
+			Addr:              cfg.ListenAddr,
+			Handler:           r,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		},
 		DB:        cfg.DB,
 		Encryptor: cfg.Encryptor,
