@@ -82,18 +82,22 @@ dbx auth login --server <their-url>
 
 **If they need to set one up**, walk them through one of these options (recommend the simplest one that fits):
 
-**Option 1: Local server (fastest for trying it out)**
+**Option 1: Local server (recommended if you only work on one machine)**
 
-Good for development on a single machine:
+If all your worktrees are on the same machine, this is all you need — no domain, no TLS, no cloud setup. Just start the server and leave it running.
 
 ```bash
 # Install the server binary
 curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh
+# Create data directory
+mkdir -p ~/.dbx-server
 # Start it (runs on localhost, no TLS needed)
 dbx-server serve --data ~/.dbx-server/data.db --age-key ~/.dbx-server/age.key --listen 127.0.0.1:8443 --no-tls &
-# Log in
+# Log in once
 dbx auth login --server http://127.0.0.1:8443
 ```
+
+From then on, `dbx pull` works from any worktree on this machine. The user can add the server to their shell startup (`.zshrc` / `.bashrc`) or create a launchd/systemd service so it starts automatically.
 
 This only works from the same machine. For cloud environments or multiple machines, they need Option 2 or 3.
 
