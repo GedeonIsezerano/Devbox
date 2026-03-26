@@ -23,7 +23,7 @@ Wrote .env.local (14 variables, 1.2 KB)
 
 ### The problem
 
-Every new worktree or cloud environment needs your env vars. Locally you copy `.env.local`. In the cloud, there's nothing to copy from. Existing tools are either SaaS-only (Doppler, 1Password), require heavy infrastructure (Infisical, Phase), or lack a push/pull model (SOPS).
+Every new worktree or cloud environment needs your env vars. Locally you copy `.env.local`. My approach to tracking environment files across worktrees and cloud dev instances.
 
 ### The solution
 
