@@ -26,19 +26,19 @@ Every time you spin up a new worktree or cloud environment, you need your env va
 **macOS (Homebrew):**
 
 ```sh
-brew install user/tap/dbx
+brew install GedeonIsezerano/tap/dbx
 ```
 
 **Linux / Cloud environments (curl):**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/user/devbox/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh
 ```
 
 **Go:**
 
 ```sh
-go install github.com/user/devbox/cmd/dbx@latest
+go install github.com/GedeonIsezerano/Devbox/cmd/dbx@latest
 ```
 
 ### Server (`dbx-server`)
@@ -50,7 +50,7 @@ docker run -d \
   --name dbx-server \
   -p 8443:8443 \
   -v dbx-data:/data \
-  ghcr.io/user/dbx-server \
+  ghcr.io/gedeonisezerano/dbx-server \
   serve --data /data/dbx.db --age-key /data/age.key --listen 0.0.0.0:8443 --no-tls
 ```
 
@@ -59,14 +59,14 @@ Put a reverse proxy (Caddy, nginx) with TLS in front for production.
 **Binary:**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/user/devbox/main/install.sh | sh -s -- --binary dbx-server
+curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --binary dbx-server
 dbx-server serve --data ./dbx.db --age-key ./age.key --listen 127.0.0.1:8443 --no-tls
 ```
 
 **From source:**
 
 ```sh
-git clone https://github.com/user/devbox.git
+git clone https://github.com/GedeonIsezerano/Devbox.git
 cd devbox
 make build
 ./bin/dbx-server serve --data ./dbx.db --age-key ./age.key --no-tls
@@ -141,7 +141,7 @@ Provision tokens burn after one use.
 
 ```
 dbx init [--name <name>]              Register project from git remote
-dbx push [--force] [--project <name>] Upload env file to server
+dbx push [--force] [--env-file <f>] [--project <name>] Upload env file to server
 dbx pull [--force] [--diff] [--backup] [--cached] [--project <name>]
                                        Download env file from server
 dbx diff [--project <name>]           Show changes without writing
@@ -160,6 +160,15 @@ dbx project delete <name> [--yes]     Delete a project
 dbx whoami [--format json]            Show current identity
 dbx completion {bash,zsh,fish}        Shell completions
 ```
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | General error |
+| 2 | Authentication error |
+| 3 | Resource not found |
 
 ## Env File Detection
 
@@ -232,7 +241,7 @@ dbx-server emergency-revoke-all --data ./dbx.db
 |---|---|---|
 | VPS (Hetzner, DigitalOcean) | Binary + systemd + Caddy | ~$5/mo |
 | Fly.io | Docker + persistent volume | Free tier possible |
-| Docker | `docker run ghcr.io/user/dbx-server` | Anywhere |
+| Docker | `docker run ghcr.io/gedeonisezerano/dbx-server` | Anywhere |
 | Raspberry Pi | Binary + systemd | $0 |
 
 ## Security
@@ -267,11 +276,38 @@ tls_ca = "/path/to/ca.pem"      # optional, for self-signed certs
 ## Development
 
 ```sh
-git clone https://github.com/user/devbox.git
+git clone https://github.com/GedeonIsezerano/Devbox.git
 cd devbox
 make build        # Build both binaries to ./bin/
-make test         # Run all 148 tests with race detection
+make test         # Run all 155 tests with race detection
 make lint         # Run go vet
+```
+
+## Troubleshooting
+
+### Rate limited (429)
+Auth endpoints are limited to 10 requests/minute per IP. Wait 60 seconds and retry.
+Sessions are cached locally after first auth, so this typically only happens during setup.
+
+### "No SSH key found"
+dbx checks: ssh-agent, then ~/.ssh/id_ed25519, id_ed25519_sk, id_ecdsa, id_rsa.
+Generate one with: `ssh-keygen -t ed25519`
+
+### "No server configured"
+Run `dbx auth login --server <url>` first. The server URL is saved to ~/.config/dbx/config.toml.
+
+### Session expired
+Sessions last 15 minutes. dbx automatically re-authenticates when a cached session expires.
+If using DEVBOX_TOKEN, the token itself may have expired -- create a new one.
+
+### Version conflict on push (409)
+Someone else pushed since your last pull. Run `dbx pull` first, then `dbx push`.
+Use `dbx push --force` to overwrite (use with caution).
+
+### .env.local not in .gitignore
+dbx warns about this. Add your env file to .gitignore to prevent accidental commits:
+```sh
+echo ".env.local" >> .gitignore
 ```
 
 ## License
