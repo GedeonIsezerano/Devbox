@@ -6,11 +6,27 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/user/devbox/internal/database"
 )
+
+// validateEnvFile checks that the env file name is safe and does not contain
+// path traversal sequences or path separators.
+func validateEnvFile(name string) error {
+	if name == "" {
+		return nil // will use default
+	}
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		return fmt.Errorf("invalid env_file: must not contain path separators or '..'")
+	}
+	if !strings.HasPrefix(name, ".env") {
+		return fmt.Errorf("invalid env_file: must start with '.env'")
+	}
+	return nil
+}
 
 // maxEnvBlobSize is the maximum size of a decoded env var blob (64KB).
 const maxEnvBlobSize = 64 * 1024
@@ -138,6 +154,12 @@ func (s *Server) handlePushEnv(w http.ResponseWriter, r *http.Request) {
 
 	if req.Data == "" {
 		writeError(w, http.StatusBadRequest, "data is required")
+		return
+	}
+
+	// Validate env_file name.
+	if err := validateEnvFile(req.EnvFile); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

@@ -2,12 +2,28 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/user/devbox/internal/database"
 )
+
+// validateProjectEnvFile checks that the env file name is safe.
+func validateProjectEnvFile(name string) error {
+	if name == "" {
+		return nil
+	}
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		return fmt.Errorf("invalid env_file: must not contain path separators or '..'")
+	}
+	if !strings.HasPrefix(name, ".env") {
+		return fmt.Errorf("invalid env_file: must start with '.env'")
+	}
+	return nil
+}
 
 // --- Request / Response types ---
 
@@ -40,6 +56,12 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name == "" {
 		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	// Validate env_file name.
+	if err := validateProjectEnvFile(req.EnvFile); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

@@ -366,3 +366,71 @@ func TestPushEnvReaderCannotWrite(t *testing.T) {
 		t.Fatalf("bob push: expected 404, got %d: %s", pushResp.Code, pushResp.Body.String())
 	}
 }
+
+func TestPushEnvPathTraversal(t *testing.T) {
+	srv := newTestServer(t)
+	_, token := createTestUserWithSession(t, srv, "alice")
+	projectID := createTestProject(t, srv, token, "test-project", ".env")
+
+	data := base64.StdEncoding.EncodeToString([]byte("KEY=val"))
+
+	tests := []struct {
+		name    string
+		envFile string
+	}{
+		{"dotdot", "../../etc/passwd"},
+		{"slash", "/etc/passwd"},
+		{"backslash", "..\\windows\\system32"},
+		{"no_dot_env_prefix", "secret.txt"},
+		{"dotdot_in_name", ".env.."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := jsonBody(pushEnvRequest{
+				Data:            data,
+				ExpectedVersion: 0,
+				EnvFile:         tt.envFile,
+			})
+			req := authRequest(httptest.NewRequest("PUT", "/projects/"+projectID+"/env", body), token)
+			req.Header.Set("Content-Type", "application/json")
+			resp := httptest.NewRecorder()
+			srv.Handler.ServeHTTP(resp, req)
+
+			if resp.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400 for env_file %q, got %d: %s", tt.envFile, resp.Code, resp.Body.String())
+			}
+		})
+	}
+}
+
+func TestCreateProjectPathTraversal(t *testing.T) {
+	srv := newTestServer(t)
+	_, token := createTestUserWithSession(t, srv, "alice")
+
+	tests := []struct {
+		name    string
+		envFile string
+	}{
+		{"dotdot", "../../etc/passwd"},
+		{"slash", "/etc/passwd"},
+		{"no_prefix", "secret.txt"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := jsonBody(createProjectRequest{
+				Name:    "test-" + tt.name,
+				EnvFile: tt.envFile,
+			})
+			req := authRequest(httptest.NewRequest("POST", "/projects", body), token)
+			req.Header.Set("Content-Type", "application/json")
+			resp := httptest.NewRecorder()
+			srv.Handler.ServeHTTP(resp, req)
+
+			if resp.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400 for env_file %q, got %d: %s", tt.envFile, resp.Code, resp.Body.String())
+			}
+		})
+	}
+}
