@@ -3,8 +3,9 @@ set -e
 
 # Devbox installer
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh              # CLI only
-#   curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --all  # CLI + server
+#   curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh                  # CLI only
+#   curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --all      # CLI + server
+#   curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --force    # Force reinstall
 #
 # Behavior:
 #   - If already installed at the latest version, skips (preserves auth/config)
@@ -15,9 +16,11 @@ REPO="GedeonIsezerano/Devbox"
 
 # Parse arguments
 INSTALL_SERVER=false
+FORCE=false
 for arg in "$@"; do
     case "$arg" in
         --all|--server) INSTALL_SERVER=true ;;
+        --force|--no-cache) FORCE=true ;;
     esac
 done
 
@@ -100,7 +103,7 @@ fetch_checksums() {
 install_binary() {
     BINARY="$1"
 
-    if ! needs_install "$BINARY"; then
+    if [ "$FORCE" = false ] && ! needs_install "$BINARY"; then
         INSTALLED_VERSION=$("$BINARY" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
         echo "${BINARY} ${INSTALLED_VERSION} is already up to date."
         return
