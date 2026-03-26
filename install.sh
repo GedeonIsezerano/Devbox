@@ -1,11 +1,20 @@
 #!/bin/sh
 set -e
 
-# Devbox CLI installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh
+# Devbox installer
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh              # CLI only
+#   curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --all  # CLI + server
 
 REPO="GedeonIsezerano/Devbox"
-BINARY="dbx"
+
+# Parse arguments
+INSTALL_SERVER=false
+for arg in "$@"; do
+    case "$arg" in
+        --all|--server) INSTALL_SERVER=true ;;
+    esac
+done
 
 # Detect OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -30,62 +39,74 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-# Download
-ARCHIVE="${BINARY}-${OS}-${ARCH}.tar.gz"
-URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
-CHECKSUM_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
-
-echo "Downloading ${BINARY} ${VERSION} for ${OS}/${ARCH}..."
-TMPDIR=$(mktemp -d)
-curl -fsSL "$URL" -o "${TMPDIR}/${ARCHIVE}"
-curl -fsSL "$CHECKSUM_URL" -o "${TMPDIR}/checksums.txt"
-
-# Verify checksum
-cd "$TMPDIR"
-EXPECTED=$(grep "${ARCHIVE}" checksums.txt | awk '{print $1}')
-if [ -z "$EXPECTED" ]; then
-    echo "Error: Checksum not found for ${ARCHIVE}"
-    rm -rf "$TMPDIR"
-    exit 1
-fi
-
-if command -v sha256sum > /dev/null 2>&1; then
-    ACTUAL=$(sha256sum "${ARCHIVE}" | awk '{print $1}')
-elif command -v shasum > /dev/null 2>&1; then
-    ACTUAL=$(shasum -a 256 "${ARCHIVE}" | awk '{print $1}')
-else
-    echo "Warning: No sha256sum or shasum found, skipping checksum verification"
-    ACTUAL="$EXPECTED"
-fi
-
-if [ "$ACTUAL" != "$EXPECTED" ]; then
-    echo "Error: Checksum mismatch!"
-    echo "  Expected: $EXPECTED"
-    echo "  Actual:   $ACTUAL"
-    rm -rf "$TMPDIR"
-    exit 1
-fi
-
-# Extract
-tar -xzf "${ARCHIVE}"
-
-# The extracted binary is named dbx-<os>-<arch>
-EXTRACTED="${BINARY}-${OS}-${ARCH}"
-
-# Install
+# Determine install directory
 INSTALL_DIR="/usr/local/bin"
 if [ ! -w "$INSTALL_DIR" ]; then
     INSTALL_DIR="${HOME}/.local/bin"
     mkdir -p "$INSTALL_DIR"
 fi
 
-mv "${EXTRACTED}" "${INSTALL_DIR}/${BINARY}"
-chmod +x "${INSTALL_DIR}/${BINARY}"
+TMPDIR=$(mktemp -d)
+CHECKSUM_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
+curl -fsSL "$CHECKSUM_URL" -o "${TMPDIR}/checksums.txt"
+
+# Install a single binary
+install_binary() {
+    BINARY="$1"
+    ARCHIVE="${BINARY}-${OS}-${ARCH}.tar.gz"
+    URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
+
+    echo "Downloading ${BINARY} ${VERSION} for ${OS}/${ARCH}..."
+    curl -fsSL "$URL" -o "${TMPDIR}/${ARCHIVE}"
+
+    # Verify checksum
+    cd "$TMPDIR"
+    EXPECTED=$(grep "${ARCHIVE}" checksums.txt | awk '{print $1}')
+    if [ -z "$EXPECTED" ]; then
+        echo "Error: Checksum not found for ${ARCHIVE}"
+        rm -rf "$TMPDIR"
+        exit 1
+    fi
+
+    if command -v sha256sum > /dev/null 2>&1; then
+        ACTUAL=$(sha256sum "${ARCHIVE}" | awk '{print $1}')
+    elif command -v shasum > /dev/null 2>&1; then
+        ACTUAL=$(shasum -a 256 "${ARCHIVE}" | awk '{print $1}')
+    else
+        echo "Warning: No sha256sum or shasum found, skipping checksum verification"
+        ACTUAL="$EXPECTED"
+    fi
+
+    if [ "$ACTUAL" != "$EXPECTED" ]; then
+        echo "Error: Checksum mismatch for ${ARCHIVE}!"
+        echo "  Expected: $EXPECTED"
+        echo "  Actual:   $ACTUAL"
+        rm -rf "$TMPDIR"
+        exit 1
+    fi
+
+    # Extract and install
+    tar -xzf "${ARCHIVE}"
+    EXTRACTED="${BINARY}-${OS}-${ARCH}"
+    mv "${EXTRACTED}" "${INSTALL_DIR}/${BINARY}"
+    chmod +x "${INSTALL_DIR}/${BINARY}"
+
+    echo "Installed ${BINARY} ${VERSION} to ${INSTALL_DIR}/${BINARY}"
+}
+
+# Always install the CLI
+install_binary "dbx"
+
+# Optionally install the server
+if [ "$INSTALL_SERVER" = true ]; then
+    install_binary "dbx-server"
+fi
 
 # Cleanup
 rm -rf "$TMPDIR"
 
-echo "Installed ${BINARY} ${VERSION} to ${INSTALL_DIR}/${BINARY}"
 if [ "$INSTALL_DIR" = "${HOME}/.local/bin" ]; then
-    echo "Make sure ${INSTALL_DIR} is in your PATH"
+    echo ""
+    echo "Make sure ${INSTALL_DIR} is in your PATH:"
+    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi

@@ -38,6 +38,12 @@ Always run all steps in order. Don't skip any — the checks are fast and confir
 which dbx || (curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh)
 ```
 
+This installs the CLI only. To also install the server binary, use `--all`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --all
+```
+
 If it installs to `~/.local/bin/` and that's not in PATH:
 
 ```bash
@@ -87,8 +93,8 @@ dbx auth login --server <their-url>
 If all your worktrees are on the same machine, this is all you need — no domain, no TLS, no cloud setup. Just start the server and leave it running.
 
 ```bash
-# Install the server binary
-curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh
+# Install CLI + server
+curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --all
 # Create data directory
 mkdir -p ~/.dbx-server
 # Start it (runs on localhost, no TLS needed)
@@ -106,6 +112,9 @@ This only works from the same machine. For cloud environments or multiple machin
 Good for trying dbx across machines without setting up a VPS:
 
 ```bash
+# Install CLI + server if not already installed
+curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --all
+mkdir -p ~/.dbx-server
 # Start the server locally
 dbx-server serve --data ~/.dbx-server/data.db --age-key ~/.dbx-server/age.key --listen 127.0.0.1:8443 --no-tls &
 # Expose it via ngrok (install ngrok first: https://ngrok.com)
@@ -126,8 +135,8 @@ The most reliable setup. A $5/month VPS gives you a permanent, always-on server.
 2. **Install and start the server:**
 
 ```bash
-# On the VPS:
-curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh
+# On the VPS — install CLI + server:
+curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --all
 # Create a directory for data
 mkdir -p /opt/dbx
 # Start with a reverse proxy in front (Caddy handles TLS automatically)
