@@ -25,13 +25,18 @@ func newID(prefix string) string {
 }
 
 // CreateUser inserts a new user. The first user in the database is
-// automatically promoted to admin.
+// automatically promoted to admin. The count check and insert are
+// wrapped in a transaction to prevent a race where two concurrent
+// calls could both become admin.
 func CreateUser(db *sql.DB, name string) (User, error) {
-	id := newID("usr_")
+	tx, err := db.Begin()
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
 
-	// Check if this will be the first user.
 	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count); err != nil {
+	if err := tx.QueryRow("SELECT COUNT(*) FROM users").Scan(&count); err != nil {
 		return User{}, fmt.Errorf("count users: %w", err)
 	}
 
@@ -40,12 +45,17 @@ func CreateUser(db *sql.DB, name string) (User, error) {
 		isAdmin = 1
 	}
 
-	_, err := db.Exec(
+	id := newID("usr_")
+	_, err = tx.Exec(
 		"INSERT INTO users (id, name, is_admin) VALUES (?, ?, ?)",
 		id, name, isAdmin,
 	)
 	if err != nil {
 		return User{}, fmt.Errorf("insert user: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return User{}, err
 	}
 
 	var user User
