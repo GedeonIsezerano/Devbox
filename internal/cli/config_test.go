@@ -66,6 +66,27 @@ func TestConfigServerURL(t *testing.T) {
 	}
 }
 
+func TestConfigFilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	cfg := Config{Server: "https://example.com"}
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(dir, "dbx", "config.toml")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat config file: %v", err)
+	}
+
+	perm := info.Mode().Perm()
+	if perm != 0o600 {
+		t.Errorf("config file permissions = %04o, want 0600", perm)
+	}
+}
+
 func TestConfigCustomCA(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)

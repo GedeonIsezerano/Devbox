@@ -60,5 +60,5 @@ func SaveConfig(cfg Config) error {
 	if err := enc.Encode(cfg); err != nil {
 		return err
 	}
-	return os.WriteFile(path, buf.Bytes(), 0o644)
+	return os.WriteFile(path, buf.Bytes(), 0o600)
 }
