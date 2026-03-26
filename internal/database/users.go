@@ -18,7 +18,9 @@ type User struct {
 // newID generates a prefixed random ID (e.g. "usr_" + 32 hex chars).
 func newID(prefix string) string {
 	b := make([]byte, 16)
-	crypto_rand.Read(b)
+	if _, err := crypto_rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
 	return prefix + hex.EncodeToString(b)
 }
 
