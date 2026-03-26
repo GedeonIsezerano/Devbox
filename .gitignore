@@ -5,3 +5,4 @@ bin/
 .env
 .env.local
 .dbx/
+dist/
