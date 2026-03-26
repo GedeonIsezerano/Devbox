@@ -139,12 +139,20 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build scope JSON.
-	var scope string
-	if tokenType == "provision" && req.ProjectID != "" {
-		scope = fmt.Sprintf(`{"permissions":[%q],"project_id":%q}`, req.Scope, req.ProjectID)
-	} else {
-		scope = fmt.Sprintf(`{"permissions":[%q]}`, req.Scope)
+	type scopeJSON struct {
+		Permissions []string `json:"permissions"`
+		ProjectID   string   `json:"project_id,omitempty"`
 	}
+	scopeObj := scopeJSON{Permissions: []string{req.Scope}}
+	if tokenType == "provision" && req.ProjectID != "" {
+		scopeObj.ProjectID = req.ProjectID
+	}
+	scopeBytes, err := json.Marshal(scopeObj)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to build scope")
+		return
+	}
+	scope := string(scopeBytes)
 
 	// Generate the raw token.
 	var prefix string
@@ -179,10 +187,15 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Audit log.
+	auditMeta, _ := json.Marshal(map[string]string{
+		"token_name": req.Name,
+		"scope":      req.Scope,
+		"ttl":        ttlStr,
+	})
 	database.LogEvent(s.DB, database.AuditEntry{
 		UserID:    userID,
 		Action:    "token.create",
-		Metadata:  fmt.Sprintf(`{"token_name":%q,"scope":%q,"ttl":%q}`, req.Name, req.Scope, ttlStr),
+		Metadata:  string(auditMeta),
 		IPAddress: r.RemoteAddr,
 		UserAgent: r.UserAgent(),
 	})

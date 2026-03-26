@@ -93,11 +93,12 @@ func (s *Server) handlePullEnv(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Audit log.
+	pullMeta, _ := json.Marshal(map[string]int{"version": envData.Version})
 	database.LogEvent(s.DB, database.AuditEntry{
 		UserID:    userID,
 		ProjectID: projectID,
 		Action:    "env.pull",
-		Metadata:  fmt.Sprintf(`{"version":%d}`, envData.Version),
+		Metadata:  string(pullMeta),
 		IPAddress: r.RemoteAddr,
 		UserAgent: r.UserAgent(),
 	})
@@ -214,11 +215,15 @@ func (s *Server) handlePushEnv(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Audit log.
+	pushMeta, _ := json.Marshal(map[string]int{
+		"old_version": req.ExpectedVersion,
+		"new_version": newVersion,
+	})
 	database.LogEvent(s.DB, database.AuditEntry{
 		UserID:    userID,
 		ProjectID: projectID,
 		Action:    "env.push",
-		Metadata:  fmt.Sprintf(`{"old_version":%d,"new_version":%d}`, req.ExpectedVersion, newVersion),
+		Metadata:  string(pushMeta),
 		IPAddress: r.RemoteAddr,
 		UserAgent: r.UserAgent(),
 	})
