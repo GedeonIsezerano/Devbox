@@ -1,6 +1,18 @@
-# Devbox
+<p align="center">
+  <h1 align="center">Devbox</h1>
+  <p align="center">Self-hosted environment variable management for developers.</p>
+  <p align="center">
+    <a href="#install">Install</a> &middot;
+    <a href="#quick-start">Quick Start</a> &middot;
+    <a href="#cloud-environments">Cloud</a> &middot;
+    <a href="#commands">Commands</a> &middot;
+    <a href="#security">Security</a>
+  </p>
+</p>
 
-Self-hosted environment variable management. Push and pull `.env` files across local worktrees, cloud environments (Claude Code, Codex), and CI — with a single authenticated command.
+---
+
+Push and pull `.env` files across local worktrees, cloud environments, and CI — with one command.
 
 ```
 $ dbx pull
@@ -9,30 +21,36 @@ Detected Node.js project -> writing .env.local
 Wrote .env.local (14 variables, 1.2 KB)
 ```
 
-## Why
+### The problem
 
-Every time you spin up a new worktree or cloud environment, you need your env vars. Locally you copy `.env.local`. In the cloud, there's nothing to copy from. Devbox fixes this:
+Every new worktree or cloud environment needs your env vars. Locally you copy `.env.local`. In the cloud, there's nothing to copy from. Existing tools are either SaaS-only (Doppler, 1Password), require heavy infrastructure (Infisical, Phase), or lack a push/pull model (SOPS).
 
-- **One command** to pull your env vars into any environment
-- **Auto-detects** the right filename (`.env.local` for Node/TS, `.env` for Python/Go/Rust)
-- **SSH key auth** locally, **PAT tokens** for cloud environments
-- **Self-hosted** — your secrets never touch a third-party server
-- **Encrypted at rest** with [age](https://age-encryption.org/) (post-quantum capable)
+### The solution
+
+Devbox gives you a single `dbx pull` that works everywhere — self-hosted, encrypted, and zero-config after initial setup.
+
+- **One command** to pull env vars into any environment
+- **Auto-detects** the right file (`.env.local` for Node/TS, `.env` for Python/Go/Rust)
+- **SSH key auth** locally, **PAT tokens** for cloud
+- **Self-hosted** — secrets never leave your infrastructure
+- **Encrypted at rest** with [age](https://age-encryption.org/) (post-quantum)
+
+---
 
 ## Install
 
 ### CLI (`dbx`)
 
-**macOS (Homebrew):**
-
-```sh
-brew install GedeonIsezerano/tap/dbx
-```
-
-**Linux / Cloud environments (curl):**
+**Linux / macOS / Cloud:**
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh
+```
+
+**Homebrew:**
+
+```sh
+brew install GedeonIsezerano/tap/dbx
 ```
 
 **Go:**
@@ -43,7 +61,7 @@ go install github.com/GedeonIsezerano/Devbox/cmd/dbx@latest
 
 ### Server (`dbx-server`)
 
-**Docker (recommended):**
+**Docker:**
 
 ```sh
 docker run -d \
@@ -54,112 +72,89 @@ docker run -d \
   serve --data /data/dbx.db --age-key /data/age.key --listen 0.0.0.0:8443 --no-tls
 ```
 
-Put a reverse proxy (Caddy, nginx) with TLS in front for production.
-
-**Binary:**
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh -s -- --binary dbx-server
-dbx-server serve --data ./dbx.db --age-key ./age.key --listen 127.0.0.1:8443 --no-tls
-```
+> Put a reverse proxy (Caddy, nginx) with TLS in front for production.
 
 **From source:**
 
 ```sh
 git clone https://github.com/GedeonIsezerano/Devbox.git
-cd devbox
+cd Devbox
 make build
 ./bin/dbx-server serve --data ./dbx.db --age-key ./age.key --no-tls
 ```
 
-The server auto-generates an age encryption key on first start if the key file doesn't exist.
+The server generates an encryption key on first start if one doesn't exist.
+
+---
 
 ## Quick Start
 
-### 1. Start the server
-
 ```sh
+# 1. Start the server
 dbx-server serve --data ./dbx.db --age-key ./age.key --listen 127.0.0.1:8443 --no-tls
-```
 
-### 2. Log in from your machine
-
-```sh
+# 2. Log in (registers your SSH key — first user becomes admin)
 dbx auth login --server http://localhost:8443
-```
 
-This registers your SSH public key with the server. First user becomes admin.
-
-### 3. Initialize a project
-
-```sh
+# 3. Initialize your project
 cd ~/Code/my-project
 dbx init
-```
 
-Reads your git remote, detects the project type, and registers it on the server.
-
-### 4. Push your env vars
-
-```sh
+# 4. Push your env vars
 dbx push
-```
 
-Reads your `.env.local` (or `.env`), encrypts it, and uploads to the server.
-
-### 5. Pull from anywhere
-
-```sh
+# 5. Pull from anywhere (new worktree, cloud, CI)
 dbx pull
 ```
 
-Downloads, decrypts, and writes the env file. Works from any clone of the repo.
+---
 
-## Cloud Environments (Claude Code, Codex, CI)
+## Cloud Environments
 
-For environments where you don't have your SSH key, use a Personal Access Token:
+For Claude Code, Codex, CI, or any environment without your SSH key:
+
+**Create a token on your laptop:**
 
 ```sh
-# On your laptop (authenticated via SSH):
 dbx token create --name "claude-code" --scope project:read --ttl 90d
-# Output: dbx_pat_x9k2m7f3...
+# => dbx_pat_x9k2m7f3...
 ```
 
-Set `DEVBOX_TOKEN` in your cloud environment's settings. Then `dbx pull` works automatically — no SSH key needed.
+**Set it in the cloud environment's settings:**
 
-### One-off access (CI, ephemeral)
+```
+DEVBOX_TOKEN=dbx_pat_x9k2m7f3...
+```
+
+Now `dbx pull` works automatically — no SSH key needed.
+
+**Single-use tokens for CI:**
 
 ```sh
-# Create a single-use token:
 dbx token create --name "ci-deploy" --type provision --project-id proj_abc --ttl 1h
-# Output: dbx_prov_a8f3e2...
+# => dbx_prov_a8f3e2... (burns after one use)
 ```
 
-Provision tokens burn after one use.
+---
 
 ## Commands
 
-```
-dbx init [--name <name>]              Register project from git remote
-dbx push [--force] [--env-file <f>] [--project <name>] Upload env file to server
-dbx pull [--force] [--diff] [--backup] [--cached] [--project <name>]
-                                       Download env file from server
-dbx diff [--project <name>]           Show changes without writing
-
-dbx auth login --server <url>         Register SSH key with server
-dbx auth status                       Show auth state
-dbx auth logout                       Clear local auth
-
-dbx token create --name <n> [--type pat|provision] [--scope <s>] [--ttl <d>]
-dbx token list [--format json]        List active tokens
-dbx token revoke <name>               Revoke a token
-
-dbx project list [--format json]      List all projects
-dbx project delete <name> [--yes]     Delete a project
-
-dbx whoami [--format json]            Show current identity
-dbx completion {bash,zsh,fish}        Shell completions
-```
+| Command | Description |
+|---|---|
+| `dbx init [--name <name>]` | Register project from git remote |
+| `dbx push [--force] [--env-file <f>] [--project <name>]` | Upload env file to server |
+| `dbx pull [--force] [--diff] [--backup] [--cached] [--project <name>]` | Download env file from server |
+| `dbx diff [--project <name>]` | Show changes without writing |
+| `dbx auth login --server <url>` | Register SSH key with server |
+| `dbx auth status` | Show auth state |
+| `dbx auth logout` | Clear local auth |
+| `dbx token create --name <n> [--type] [--scope] [--ttl]` | Create API token |
+| `dbx token list [--format json]` | List tokens |
+| `dbx token revoke <name>` | Revoke a token |
+| `dbx project list [--format json]` | List projects |
+| `dbx project delete <name> [--yes]` | Delete a project |
+| `dbx whoami [--format json]` | Show current identity |
+| `dbx completion {bash,zsh,fish}` | Shell completions |
 
 ### Exit codes
 
@@ -168,13 +163,15 @@ dbx completion {bash,zsh,fish}        Shell completions
 | 0 | Success |
 | 1 | General error |
 | 2 | Authentication error |
-| 3 | Resource not found |
+| 3 | Not found |
+
+---
 
 ## Env File Detection
 
-The CLI auto-detects which file to write based on your project:
+`dbx` auto-detects which file to write:
 
-| Project type | Marker file | Env file written |
+| Project | Marker | File |
 |---|---|---|
 | Node.js / TypeScript | `package.json`, `tsconfig.json` | `.env.local` |
 | Next.js / Nuxt | `next.config.*`, `nuxt.config.*` | `.env.local` |
@@ -185,131 +182,126 @@ The CLI auto-detects which file to write based on your project:
 | PHP | `composer.json` | `.env` |
 | Unknown | — | `.env` |
 
-Override with `--env-file`:
+Override: `dbx pull --env-file .env.local`
 
-```sh
-dbx pull --env-file .env.local    # Force .env.local regardless of project type
-```
+---
 
 ## Authentication
 
-`dbx` resolves auth automatically in this order:
+Auth resolves automatically:
 
-| Priority | Method | When to use |
+| Priority | Method | Use case |
 |---|---|---|
-| 1 | `DEVBOX_TOKEN` env var | Cloud environments, CI |
-| 2 | SSH key | Local machines |
+| 1 | `DEVBOX_TOKEN` env var | Cloud, CI |
+| 2 | Cached session | Repeat commands within 15 min |
+| 3 | SSH key | Local machines |
 
-**SSH key discovery order:** ssh-agent, then `~/.ssh/id_ed25519`, `id_ed25519_sk`, `id_ecdsa`, `id_rsa`.
+**SSH key discovery:** ssh-agent, then `~/.ssh/id_ed25519`, `id_ed25519_sk`, `id_ecdsa`, `id_rsa`.
 
-### Token types
+**Token types:**
 
 | Type | Prefix | Lifespan | Use case |
 |---|---|---|---|
-| PAT | `dbx_pat_` | Up to 365 days (default 90d) | Cloud environments |
-| Provision | `dbx_prov_` | Single-use, time-limited | CI, one-off access |
+| PAT | `dbx_pat_` | Up to 365d (default 90d) | Cloud environments |
+| Provision | `dbx_prov_` | Single-use | CI, one-off access |
+
+---
 
 ## Server Administration
 
-### Backup
-
 ```sh
+# Backup
 dbx-server backup --data ./dbx.db --output ./backup.db
-```
 
-### Emergency: Revoke all sessions and tokens
-
-```sh
+# Emergency: revoke all sessions and tokens
 dbx-server emergency-revoke-all --data ./dbx.db
 ```
 
-### Server flags
+**Server flags:**
 
-```
---data <path>       SQLite database path (default: ./dbx.db)
---age-key <path>    Age encryption key path (default: ./age.key)
---listen <addr>     Listen address (default: 127.0.0.1:8443)
---tls-cert <path>   TLS certificate
---tls-key <path>    TLS private key
---no-tls            Run without TLS (for local dev or behind a reverse proxy)
---allow-root        Allow running as root
-```
+| Flag | Default | Description |
+|---|---|---|
+| `--data` | `./dbx.db` | SQLite database path |
+| `--age-key` | `./age.key` | Age encryption key path |
+| `--listen` | `127.0.0.1:8443` | Listen address |
+| `--tls-cert` | — | TLS certificate |
+| `--tls-key` | — | TLS private key |
+| `--no-tls` | `false` | Run without TLS (local dev / reverse proxy) |
+| `--allow-root` | `false` | Allow running as root |
 
-### Deployment options
+**Deployment:**
 
 | Option | Setup | Cost |
 |---|---|---|
-| VPS (Hetzner, DigitalOcean) | Binary + systemd + Caddy | ~$5/mo |
-| Fly.io | Docker + persistent volume | Free tier possible |
-| Docker | `docker run ghcr.io/gedeonisezerano/dbx-server` | Anywhere |
+| VPS (Hetzner, DO) | Binary + systemd + Caddy | ~$5/mo |
+| Fly.io | Docker + persistent volume | Free tier |
+| Docker | `docker run ghcr.io/gedeonisezerano/dbx-server` | Any host |
 | Raspberry Pi | Binary + systemd | $0 |
+
+---
 
 ## Security
 
-- Env vars encrypted at rest with [age](https://age-encryption.org/) (v1.3+, post-quantum)
-- Per-project encryption keys derived via HKDF-SHA256
-- SSH challenge-response auth with namespace domain separation (`devbox-auth@v1`)
-- Nonces are single-use with 60s TTL
-- Tokens are SHA-256 hashed in the database (generated with 256-bit entropy from `crypto/rand`)
-- Session tokens are server-side (revocable), 15-minute expiry
+- Encrypted at rest with [age](https://age-encryption.org/) v1.3+ (post-quantum)
+- Per-project keys via HKDF-SHA256
+- SSH challenge-response with domain separation (`devbox-auth@v1`)
+- Single-use nonces (60s TTL)
+- Tokens hashed with SHA-256 (256-bit entropy, `crypto/rand`)
+- Server-side sessions (revocable, 15-min expiry)
 - Rate limiting on auth endpoints (10/min per IP)
-- SQLite with WAL mode, `secure_delete=ON`, file permissions `0600`
+- HTTP server timeouts (slowloris protection)
+- SQLite WAL mode, `secure_delete=ON`, `0600` file permissions
 - Env files written with `0600` permissions
-- All audit events logged (auth, push, pull, token create/revoke)
+- Full audit trail (auth, push, pull, token operations)
 
-**Threat model:** Server-side encryption. The server operator is trusted. Designed for single-developer or small-team self-hosted deployments where you control the server.
+**Threat model:** Server-side encryption — the server operator is trusted. Designed for single-developer or small-team self-hosted use.
+
+---
 
 ## Configuration
 
-**Client config** (`~/.config/dbx/config.toml`):
+**Client** (`~/.config/dbx/config.toml`):
 
 ```toml
 server = "https://dbx.example.com"
-ssh_key = "~/.ssh/id_ed25519"    # optional, auto-detected
-tls_ca = "/path/to/ca.pem"      # optional, for self-signed certs
+ssh_key = "~/.ssh/id_ed25519"   # optional, auto-detected
+tls_ca = "/path/to/ca.pem"     # optional, for self-signed certs
 ```
 
-**Local cache** (`.dbx/cache/` in your repo, gitignored):
-- Cached env blob for offline fallback (`dbx pull --cached`)
-- Version tracking for optimistic locking on push
+**Cache** (`.dbx/cache/` per repo, gitignored):
+- Offline fallback (`dbx pull --cached`)
+- Version tracking for optimistic locking
+
+---
+
+## Troubleshooting
+
+**Rate limited (429)** — Auth is limited to 10 req/min per IP. Wait 60s. Sessions are cached after first auth.
+
+**"No SSH key found"** — Generate one: `ssh-keygen -t ed25519`
+
+**"No server configured"** — Run `dbx auth login --server <url>` first.
+
+**Session expired** — Auto-re-authenticates. If using `DEVBOX_TOKEN`, the token may have expired.
+
+**Version conflict (409)** — Run `dbx pull` first, then `dbx push`. Or `dbx push --force`.
+
+**`.env.local` not in `.gitignore`** — `echo ".env.local" >> .gitignore`
+
+---
 
 ## Development
 
 ```sh
 git clone https://github.com/GedeonIsezerano/Devbox.git
-cd devbox
-make build        # Build both binaries to ./bin/
-make test         # Run all 155 tests with race detection
-make lint         # Run go vet
+cd Devbox
+make build    # Build both binaries to ./bin/
+make test     # Run all 155 tests with race detection
+make lint     # Run go vet
 ```
 
-## Troubleshooting
-
-### Rate limited (429)
-Auth endpoints are limited to 10 requests/minute per IP. Wait 60 seconds and retry.
-Sessions are cached locally after first auth, so this typically only happens during setup.
-
-### "No SSH key found"
-dbx checks: ssh-agent, then ~/.ssh/id_ed25519, id_ed25519_sk, id_ecdsa, id_rsa.
-Generate one with: `ssh-keygen -t ed25519`
-
-### "No server configured"
-Run `dbx auth login --server <url>` first. The server URL is saved to ~/.config/dbx/config.toml.
-
-### Session expired
-Sessions last 15 minutes. dbx automatically re-authenticates when a cached session expires.
-If using DEVBOX_TOKEN, the token itself may have expired -- create a new one.
-
-### Version conflict on push (409)
-Someone else pushed since your last pull. Run `dbx pull` first, then `dbx push`.
-Use `dbx push --force` to overwrite (use with caution).
-
-### .env.local not in .gitignore
-dbx warns about this. Add your env file to .gitignore to prevent accidental commits:
-```sh
-echo ".env.local" >> .gitignore
-```
+---
 
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE) for details.
