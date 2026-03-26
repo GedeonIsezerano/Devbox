@@ -135,6 +135,17 @@ dbx token create --name "ci-deploy" --type provision --project-id proj_abc --ttl
 # => dbx_prov_a8f3e2... (burns after one use)
 ```
 
+### AI Agent Setup (Claude Code, Codex, etc.)
+
+Add the install to your project's setup script, set `DEVBOX_TOKEN` as a persistent env var, and add a line to your `CLAUDE.md` / `AGENTS.md`:
+
+```markdown
+# CLAUDE.md
+If .env.local or .env is missing, run `dbx pull --force` to fetch environment variables.
+```
+
+That's it — when the agent starts a worktree or cloud session, it installs `dbx`, authenticates via the token, and pulls your env vars automatically.
+
 ---
 
 ## Commands
