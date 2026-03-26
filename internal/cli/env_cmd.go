@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -257,11 +258,15 @@ func RunPull(opts PullOptions, printer *Printer) error {
 	if readErr == nil && string(existing) == string(plaintext) {
 		printer.Success("Already up to date (%s, version %d)", envFile, envResp.Version)
 		// Still update cache.
-		writeCacheBlob(repoRoot, plaintext)
-		writeCacheState(repoRoot, cacheState{
+		if err := writeCacheBlob(repoRoot, plaintext); err != nil {
+			log.Printf("warning: failed to write cache blob: %v", err)
+		}
+		if err := writeCacheState(repoRoot, cacheState{
 			LastPulledVersion: envResp.Version,
 			EnvFile:           envFile,
-		})
+		}); err != nil {
+			log.Printf("warning: failed to write cache state: %v", err)
+		}
 		return nil
 	}
 
@@ -314,11 +319,15 @@ func RunPull(opts PullOptions, printer *Printer) error {
 	}
 
 	// Cache the blob and version.
-	writeCacheBlob(repoRoot, plaintext)
-	writeCacheState(repoRoot, cacheState{
+	if err := writeCacheBlob(repoRoot, plaintext); err != nil {
+		log.Printf("warning: failed to write cache blob: %v", err)
+	}
+	if err := writeCacheState(repoRoot, cacheState{
 		LastPulledVersion: envResp.Version,
 		EnvFile:           envFile,
-	})
+	}); err != nil {
+		log.Printf("warning: failed to write cache state: %v", err)
+	}
 
 	// Check .gitignore.
 	checkGitignore(repoRoot, envFile, printer)
@@ -455,13 +464,17 @@ func RunPush(opts PushOptions, printer *Printer) error {
 	}
 
 	// Update cache state.
-	writeCacheState(repoRoot, cacheState{
+	if err := writeCacheState(repoRoot, cacheState{
 		LastPulledVersion: pushResp.Version,
 		EnvFile:           envFile,
-	})
+	}); err != nil {
+		log.Printf("warning: failed to write cache state: %v", err)
+	}
 
 	// Also cache the blob we just pushed.
-	writeCacheBlob(repoRoot, data)
+	if err := writeCacheBlob(repoRoot, data); err != nil {
+		log.Printf("warning: failed to write cache blob: %v", err)
+	}
 
 	printer.Success("Pushed %s (version %d)", envFile, pushResp.Version)
 	return nil
