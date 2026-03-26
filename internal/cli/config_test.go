@@ -87,6 +87,66 @@ func TestConfigFilePermissions(t *testing.T) {
 	}
 }
 
+func TestSessionSaveAndLoad(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	// No session initially.
+	token, err := LoadSession()
+	if err != nil {
+		t.Fatalf("LoadSession() error: %v", err)
+	}
+	if token != "" {
+		t.Fatalf("expected empty session, got %q", token)
+	}
+
+	// Save a session.
+	if err := SaveSession("dbx_ses_abc123"); err != nil {
+		t.Fatalf("SaveSession() error: %v", err)
+	}
+
+	// Load it back.
+	token, err = LoadSession()
+	if err != nil {
+		t.Fatalf("LoadSession() error: %v", err)
+	}
+	if token != "dbx_ses_abc123" {
+		t.Fatalf("expected 'dbx_ses_abc123', got %q", token)
+	}
+
+	// Check permissions.
+	info, err := os.Stat(SessionPath())
+	if err != nil {
+		t.Fatalf("stat session file: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("session file permissions = %04o, want 0600", perm)
+	}
+
+	// Clear session.
+	if err := ClearSession(); err != nil {
+		t.Fatalf("ClearSession() error: %v", err)
+	}
+
+	token, err = LoadSession()
+	if err != nil {
+		t.Fatalf("LoadSession() after clear error: %v", err)
+	}
+	if token != "" {
+		t.Fatalf("expected empty session after clear, got %q", token)
+	}
+}
+
+func TestClearSessionNoFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	// Clearing a non-existent session should not error.
+	if err := ClearSession(); err != nil {
+		t.Fatalf("ClearSession() on missing file: %v", err)
+	}
+}
+
 func TestConfigCustomCA(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)

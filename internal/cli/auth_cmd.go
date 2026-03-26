@@ -52,11 +52,33 @@ func ResolveAuth(printer *Printer) (*Client, error) {
 		}
 
 		client.AuthToken = resp.SessionToken
+		// Don't cache DEVBOX_TOKEN sessions — the env var is the source of truth.
 		printer.Info("Authenticated via DEVBOX_TOKEN")
 		return client, nil
 	}
 
-	// 2. SSH key challenge-response.
+	// 2. Try cached session token.
+	if cachedToken, _ := LoadSession(); cachedToken != "" {
+		client, cErr := NewClient(cfg.Server, cachedToken, cfg.TLSCA)
+		if cErr == nil {
+			// Verify the session is still valid with a lightweight request.
+			_, testErr := client.ListProjects()
+			if testErr == nil {
+				printer.Info("Authenticated via cached session")
+				return client, nil
+			}
+			// If 401, session expired — clear and fall through to SSH.
+			apiErr, ok := testErr.(*APIError)
+			if ok && apiErr.StatusCode == 401 {
+				ClearSession()
+			} else {
+				// Some other error (network, etc.) — still fall through.
+				ClearSession()
+			}
+		}
+	}
+
+	// 3. SSH key challenge-response.
 	candidate, err := discoverSSHKey(cfg.SSHKey)
 	if err != nil {
 		return nil, fmt.Errorf("no SSH key found: %w", err)
@@ -94,6 +116,13 @@ func ResolveAuth(printer *Printer) (*Client, error) {
 	}
 
 	client.AuthToken = verifyResp.SessionToken
+
+	// Cache the session token for future commands.
+	if sErr := SaveSession(verifyResp.SessionToken); sErr != nil {
+		// Non-fatal — log but continue.
+		printer.Info("Warning: could not cache session token: %v", sErr)
+	}
+
 	if candidate.FromAgent {
 		printer.Info("Authenticated via ssh-agent")
 	} else {
@@ -316,6 +345,11 @@ func RunAuthLogin(serverURL string, printer *Printer) error {
 		return fmt.Errorf("saving config: %w", err)
 	}
 
+	// Cache the session token.
+	if err := SaveSession(verifyResp.SessionToken); err != nil {
+		printer.Info("Warning: could not cache session token: %v", err)
+	}
+
 	printer.Success("Logged in to %s (session expires in %ds)", serverURL, verifyResp.ExpiresIn)
 	return nil
 }
@@ -397,6 +431,9 @@ func RunAuthLogout(printer *Printer) error {
 	if err := SaveConfig(cfg); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}
+
+	// Clear cached session token.
+	ClearSession()
 
 	printer.Success("Logged out from %s", oldServer)
 	return nil

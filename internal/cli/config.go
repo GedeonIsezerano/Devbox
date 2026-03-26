@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -45,6 +46,51 @@ func LoadConfig() (Config, error) {
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+// SessionPath returns the path to the session token file,
+// typically ~/.config/dbx/session.
+func SessionPath() string {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = "."
+		}
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "dbx", "session")
+}
+
+// LoadSession reads a cached session token from disk. Returns an empty string
+// and nil error if the file does not exist.
+func LoadSession() (string, error) {
+	data, err := os.ReadFile(SessionPath())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// SaveSession writes a session token to disk with 0600 permissions.
+func SaveSession(token string) error {
+	path := SessionPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(token+"\n"), 0o600)
+}
+
+// ClearSession removes the cached session token file.
+func ClearSession() error {
+	err := os.Remove(SessionPath())
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // SaveConfig writes the configuration to disk, creating parent directories
