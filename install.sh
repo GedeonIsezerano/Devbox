@@ -2,9 +2,9 @@
 set -e
 
 # Devbox CLI installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/user/devbox/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/GedeonIsezerano/Devbox/main/install.sh | sh
 
-REPO="user/devbox"
+REPO="GedeonIsezerano/Devbox"
 BINARY="dbx"
 
 # Detect OS
@@ -31,7 +31,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 # Download
-ARCHIVE="${BINARY}_${OS}_${ARCH}.tar.gz"
+ARCHIVE="${BINARY}-${OS}-${ARCH}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
 CHECKSUM_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
 
@@ -69,6 +69,9 @@ fi
 # Extract
 tar -xzf "${ARCHIVE}"
 
+# The extracted binary is named dbx-<os>-<arch>
+EXTRACTED="${BINARY}-${OS}-${ARCH}"
+
 # Install
 INSTALL_DIR="/usr/local/bin"
 if [ ! -w "$INSTALL_DIR" ]; then
@@ -76,7 +79,7 @@ if [ ! -w "$INSTALL_DIR" ]; then
     mkdir -p "$INSTALL_DIR"
 fi
 
-mv "${BINARY}" "${INSTALL_DIR}/${BINARY}"
+mv "${EXTRACTED}" "${INSTALL_DIR}/${BINARY}"
 chmod +x "${INSTALL_DIR}/${BINARY}"
 
 # Cleanup
