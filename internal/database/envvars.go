@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // ErrVersionConflict is returned when a push fails due to optimistic lock mismatch.
@@ -33,16 +34,37 @@ func PushEnvVars(db *sql.DB, projectID, environment string, blob []byte, expecte
 	defer tx.Rollback()
 
 	if expectedVersion == 0 {
-		// First push — insert with version 1.
+		// Version 0 means "force push" — first try insert, fall back to
+		// unconditional update if the row already exists.
 		id := newID("env_")
 		_, err = tx.Exec(
 			"INSERT INTO env_vars (id, project_id, environment, blob, version, updated_by) VALUES (?, ?, ?, ?, 1, ?)",
 			id, projectID, environment, blob, userID,
 		)
 		if err != nil {
-			return 0, fmt.Errorf("insert env_vars: %w", err)
+			if strings.Contains(err.Error(), "UNIQUE constraint") {
+				// Row already exists — unconditional overwrite (no version check).
+				var currentVersion int
+				if qerr := tx.QueryRow(
+					"SELECT version FROM env_vars WHERE project_id = ? AND environment = ?",
+					projectID, environment,
+				).Scan(&currentVersion); qerr != nil {
+					return 0, fmt.Errorf("read current version: %w", qerr)
+				}
+				_, uerr := tx.Exec(
+					"UPDATE env_vars SET blob = ?, version = version + 1, updated_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE project_id = ? AND environment = ?",
+					blob, userID, projectID, environment,
+				)
+				if uerr != nil {
+					return 0, fmt.Errorf("force update env_vars: %w", uerr)
+				}
+				newVersion = currentVersion + 1
+			} else {
+				return 0, fmt.Errorf("insert env_vars: %w", err)
+			}
+		} else {
+			newVersion = 1
 		}
-		newVersion = 1
 	} else {
 		// Subsequent push — optimistic lock on version.
 		result, err := tx.Exec(

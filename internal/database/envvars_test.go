@@ -307,3 +307,62 @@ func TestEnvVarHistoryPruning(t *testing.T) {
 		t.Fatalf("expected newest version to be 12, got %d", maxVersion)
 	}
 }
+
+func TestPushEnvVarsForceOverwrite(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	user, err := CreateUser(db, "testuser")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := CreateProject(db, "testproj", "github.com/user/repo", ".env", user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First push: version 0 -> 1.
+	blob1 := []byte("KEY=value1")
+	v1, err := PushEnvVars(db, project.ID, "default", blob1, 0, user.ID)
+	if err != nil {
+		t.Fatalf("first push failed: %v", err)
+	}
+	if v1 != 1 {
+		t.Fatalf("expected version 1, got %d", v1)
+	}
+
+	// Second push with version 1 -> 2.
+	blob2 := []byte("KEY=value2")
+	v2, err := PushEnvVars(db, project.ID, "default", blob2, 1, user.ID)
+	if err != nil {
+		t.Fatalf("second push failed: %v", err)
+	}
+	if v2 != 2 {
+		t.Fatalf("expected version 2, got %d", v2)
+	}
+
+	// Force push with version 0 when row already exists — should overwrite.
+	blob3 := []byte("KEY=forced")
+	v3, err := PushEnvVars(db, project.ID, "default", blob3, 0, user.ID)
+	if err != nil {
+		t.Fatalf("force push failed: %v", err)
+	}
+	if v3 != 3 {
+		t.Fatalf("expected version 3 after force push, got %d", v3)
+	}
+
+	// Verify the content was overwritten.
+	data, err := PullEnvVars(db, project.ID, "default")
+	if err != nil {
+		t.Fatalf("pull after force push failed: %v", err)
+	}
+	if !bytes.Equal(data.Blob, blob3) {
+		t.Fatalf("expected blob %q, got %q", blob3, data.Blob)
+	}
+	if data.Version != 3 {
+		t.Fatalf("expected version 3, got %d", data.Version)
+	}
+}
