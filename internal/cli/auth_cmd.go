@@ -18,9 +18,10 @@ import (
 type sshKeyCandidate struct {
 	PublicKey   ssh.PublicKey
 	Signer     ssh.Signer
-	Path       string // path to the key file (empty for agent keys)
-	Comment    string // key comment from authorized_keys format
+	Path       string   // path to the key file (empty for agent keys)
+	Comment    string   // key comment from authorized_keys format
 	FromAgent  bool
+	agentConn  net.Conn // kept open for agent-based signers; caller must close
 }
 
 // ResolveAuth creates an authenticated client using the auth resolution order:
@@ -59,6 +60,9 @@ func ResolveAuth(printer *Printer) (*Client, error) {
 	candidate, err := discoverSSHKey(cfg.SSHKey)
 	if err != nil {
 		return nil, fmt.Errorf("no SSH key found: %w", err)
+	}
+	if candidate.agentConn != nil {
+		defer candidate.agentConn.Close()
 	}
 
 	fingerprint := ssh.FingerprintSHA256(candidate.PublicKey)
@@ -140,30 +144,34 @@ func discoverSSHKey(preferredPath string) (*sshKeyCandidate, error) {
 }
 
 // trySSHAgent connects to the SSH agent and returns the first available key.
+// The caller must close candidate.agentConn when done with the signer.
 func trySSHAgent(sock string) (*sshKeyCandidate, error) {
 	conn, err := net.Dial("unix", sock)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to ssh-agent: %w", err)
 	}
-	defer conn.Close()
 
 	agentClient := agent.NewClient(conn)
 	signers, err := agentClient.Signers()
 	if err != nil {
+		conn.Close()
 		return nil, fmt.Errorf("listing agent keys: %w", err)
 	}
 
 	if len(signers) == 0 {
+		conn.Close()
 		return nil, fmt.Errorf("no keys in ssh-agent")
 	}
 
 	// Use the first key from the agent.
+	// Connection must stay open — the signer signs via the agent protocol.
 	signer := signers[0]
 	return &sshKeyCandidate{
 		PublicKey: signer.PublicKey(),
 		Signer:   signer,
 		FromAgent: true,
 		Comment:  "ssh-agent key",
+		agentConn: conn,
 	}, nil
 }
 
@@ -216,6 +224,9 @@ func RunAuthLogin(serverURL string, printer *Printer) error {
 	candidate, err := discoverSSHKey(cfg.SSHKey)
 	if err != nil {
 		return fmt.Errorf("no SSH key found: %w", err)
+	}
+	if candidate.agentConn != nil {
+		defer candidate.agentConn.Close()
 	}
 
 	fingerprint := ssh.FingerprintSHA256(candidate.PublicKey)
@@ -345,6 +356,9 @@ func RunAuthStatus(printer *Printer) error {
 			result.AuthMethod = "none"
 			result.Detail = "no SSH key found"
 		} else {
+			if candidate.agentConn != nil {
+				defer candidate.agentConn.Close()
+			}
 			if candidate.FromAgent {
 				result.AuthMethod = "ssh-agent"
 				result.Detail = ssh.FingerprintSHA256(candidate.PublicKey)
