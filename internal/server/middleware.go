@@ -53,9 +53,27 @@ type rateLimitEntry struct {
 // RateLimiter returns middleware that enforces a per-IP rate limit of
 // maxPerMinute requests per 60-second sliding window. When the limit is
 // exceeded, it responds with 429 Too Many Requests and a Retry-After header.
+// A background goroutine periodically removes expired entries to prevent
+// unbounded map growth.
 func RateLimiter(maxPerMinute int) func(http.Handler) http.Handler {
 	var mu sync.Mutex
 	clients := make(map[string]*rateLimitEntry)
+
+	// Periodic cleanup of expired entries to prevent unbounded growth.
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			mu.Lock()
+			now := time.Now()
+			for ip, entry := range clients {
+				if now.Sub(entry.windowStart) >= time.Minute {
+					delete(clients, ip)
+				}
+			}
+			mu.Unlock()
+		}
+	}()
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -92,13 +110,10 @@ func RateLimiter(maxPerMinute int) func(http.Handler) http.Handler {
 }
 
 // extractIP gets the client IP from the request, stripping the port if present.
+// Only uses RemoteAddr. Does not trust X-Forwarded-For by default since it can
+// be spoofed by clients. Operators behind a reverse proxy should configure the
+// proxy to set RemoteAddr correctly (e.g., Caddy does this automatically).
 func extractIP(r *http.Request) string {
-	// Check X-Forwarded-For first for proxied requests.
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.SplitN(xff, ",", 2)
-		return strings.TrimSpace(parts[0])
-	}
-
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

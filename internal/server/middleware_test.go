@@ -77,6 +77,35 @@ func TestRateLimiterDifferentIPs(t *testing.T) {
 	}
 }
 
+func TestRateLimiterIgnoresXForwardedFor(t *testing.T) {
+	limiter := RateLimiter(2)
+	handler := limiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Exhaust the limit for the real IP.
+	for i := 0; i < 2; i++ {
+		resp := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.1:1234"
+		handler.ServeHTTP(resp, req)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200, got %d", i+1, resp.Code)
+		}
+	}
+
+	// Next request with a spoofed X-Forwarded-For should still be rate-limited
+	// because we only use RemoteAddr.
+	resp := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 (X-Forwarded-For should be ignored), got %d", resp.Code)
+	}
+}
+
 func TestRequestSizeLimit(t *testing.T) {
 	const limit int64 = 1024 // 1KB for test
 
